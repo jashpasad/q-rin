@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q-RIN Harvest-Debt Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: sticky section nav over a 1080px reading column; each section = heading, short prose, then cards of charts/tables in a 12-col grid. */
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --ink:#14202b; --muted:#566473; --line:#dce2e8;
+  --accent:#0b6e8a; --accent-soft:#dbeff5; --warn:#b4631a; --bad:#a3324d; --good:#2f7d4f;
+  --grey1:#8693a0; --grey2:#b5bfc8; --band:#0e2a3a; --band-ink:#e8f1f5;
+  --display:"Source Serif 4", Georgia, "Times New Roman", serif;
+  --body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e141a; --surface:#151f29; --ink:#e5ecf2; --muted:#9aa8b5; --line:#283642;
+    --accent:#4fb3cf; --accent-soft:#15384a; --warn:#e39a55; --bad:#e07a93; --good:#6cc08d;
+    --grey1:#7f8c99; --grey2:#4b5864; --band:#0a1f2b; --band-ink:#e5f0f5; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e141a; --surface:#151f29; --ink:#e5ecf2; --muted:#9aa8b5; --line:#283642;
+  --accent:#4fb3cf; --accent-soft:#15384a; --warn:#e39a55; --bad:#e07a93; --good:#6cc08d;
+  --grey1:#7f8c99; --grey2:#4b5864; --band:#0a1f2b; --band-ink:#e5f0f5; color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--ink); font-family:var(--body); font-size:16px; line-height:1.55}
+a{color:var(--accent)}
+.band{background:var(--band); color:var(--band-ink)}
+.band .inner{max-width:1080px; margin:0 auto; padding:36px 20px 30px; display:flex; flex-direction:column; gap:12px}
+.kicker{font-family:var(--mono); font-size:13px; opacity:.8; letter-spacing:.02em}
+h1{font-family:var(--display); font-size:clamp(30px,4.6vw,44px); line-height:1.12; margin:0; text-wrap:balance; max-width:22ch}
+.band p{max-width:70ch; margin:0; font-size:17px; opacity:.9}
+.pillrow{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px}
+.pill{font-size:12.5px; font-family:var(--mono); border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:3px 10px}
+nav.toc{position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--line)}
+nav.toc .inner{max-width:1080px; margin:0 auto; padding:0 12px; display:flex; gap:2px; overflow-x:auto}
+nav.toc a{white-space:nowrap; text-decoration:none; color:var(--muted); font-size:14px; padding:12px 10px; border-bottom:2px solid transparent}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--ink); border-bottom-color:var(--accent); outline:none}
+main{max-width:1080px; margin:0 auto; padding:28px 20px 72px; display:flex; flex-direction:column; gap:44px}
+section{display:flex; flex-direction:column; gap:16px; scroll-margin-top:56px}
+.eyebrow{font-family:var(--mono); font-size:12.5px; color:var(--accent); letter-spacing:.04em; text-transform:uppercase}
+h2{font-family:var(--display); font-size:clamp(24px,3vw,30px); margin:0; line-height:1.2; text-wrap:balance}
+h3{font-family:var(--display); font-size:19px; margin:0; line-height:1.25; text-wrap:balance}
+p{margin:0; max-width:70ch}
+.sub{color:var(--muted)}
+.small{font-size:13.5px; color:var(--muted)}
+.note{border-left:3px solid var(--warn); padding:10px 14px; background:var(--surface); font-size:14px; max-width:none; border-radius:0 6px 6px 0}
+.grid{display:grid; grid-template-columns:repeat(12,1fr); gap:14px}
+.c12{grid-column:span 12}.c8{grid-column:span 8}.c7{grid-column:span 7}.c6{grid-column:span 6}.c5{grid-column:span 5}.c4{grid-column:span 4}.c3{grid-column:span 3}
+@media (max-width:860px){.c8,.c7,.c6,.c5,.c4{grid-column:span 12}.c3{grid-column:span 6}}
+@media (max-width:460px){.c3{grid-column:span 12}}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:16px 18px; display:flex; flex-direction:column; gap:10px; min-width:0}
+.tile .n{font-family:var(--mono); font-size:30px; line-height:1.1; font-weight:500; color:var(--accent); font-variant-numeric:tabular-nums}
+.tile .l{font-size:13.5px; color:var(--muted)}
+.tile .t{font-size:14px; font-weight:600}
+.controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+.controls span{font-size:13.5px; color:var(--muted); margin-right:2px}
+button.seg{font:inherit; font-size:13.5px; padding:5px 12px; border-radius:999px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer}
+button.seg[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:#fff}
+button.seg:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.chart{width:100%; overflow-x:auto}
+svg text{font-family:var(--body); fill:var(--muted); font-size:12px}
+svg text.lab{fill:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:12.5px; color:var(--muted)}
+.legend i{display:inline-block; width:14px; height:4px; vertical-align:middle; margin-right:6px; border-radius:2px}
+.legend b{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13.5px}
+th,td{text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-weight:600; color:var(--muted); font-size:12.5px}
+td.num,th.num{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap}
+tr.hi td{color:var(--accent); font-weight:600}
+.yes{color:var(--good); font-weight:600}.no{color:var(--muted)}.part{color:var(--warn); font-weight:600}
+.formula{font-family:var(--mono); font-size:13.5px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px; overflow-x:auto; white-space:pre; line-height:1.6}
+ul,ol{margin:0; padding-left:20px; max-width:70ch} li{margin:4px 0}
+.pipeline{display:grid; grid-template-columns:repeat(5,1fr); gap:10px}
+@media (max-width:860px){.pipeline{grid-template-columns:1fr}}
+.stage{background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--accent); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px; position:relative}
+.stage .num{font-family:var(--mono); font-size:12px; color:var(--accent)}
+.stage h3{font-size:17px}
+.stage .io{font-size:12.5px; color:var(--muted); border-top:1px dashed var(--line); padding-top:6px}
+.stage ul{font-size:13.5px; padding-left:16px}
+.chip{display:inline-block; font-family:var(--mono); font-size:11.5px; padding:1px 7px; border-radius:4px; background:var(--accent-soft); color:var(--ink)}
+.chip.bad{background:color-mix(in srgb, var(--bad) 18%, transparent)}
+.chip.warn{background:color-mix(in srgb, var(--warn) 20%, transparent)}
+.chip.good{background:color-mix(in srgb, var(--good) 18%, transparent)}
+.timeline{display:flex; flex-direction:column; gap:0}
+.tl{display:grid; grid-template-columns:88px 1fr; gap:12px; padding:8px 0; border-bottom:1px solid var(--line); font-size:14px}
+.tl .y{font-family:var(--mono); color:var(--accent); font-weight:500}
+.steps{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+@media (max-width:860px){.steps{grid-template-columns:1fr 1fr}}
+@media (max-width:460px){.steps{grid-template-columns:1fr}}
+footer{max-width:1080px; margin:0 auto; padding:0 20px 40px; font-size:13px; color:var(--muted)}
+ol.refs{font-size:13.5px; max-width:none; columns:2; column-gap:28px}
+@media (max-width:860px){ol.refs{columns:1}}
+ol.refs li{break-inside:avoid}
+@media (prefers-reduced-motion: reduce){*{transition:none!important; scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+</head>
+<body>
+
+<div class="band"><div class="inner">
+  <div class="kicker">GIFT FutureLab Grand Challenge 2026–27 · Team Jalebi · Jash Pasad, Beli Dedhia · IIT Gandhinagar</div>
+  <h1>Q-RIN: pricing and paying down quantum "harvest debt" in finance</h1>
+  <p>Adversaries can record encrypted traffic and steal encrypted archives today, then decrypt them once a quantum computer exists. Every month a bank keeps RSA or elliptic-curve cryptography on a channel, it adds to that pile. Q-RIN (ऋण, debt) measures this accruing liability, plans the migration order that minimises it, and devalues data that may already be gone.</p>
+  <div class="pillrow"><span class="pill">Quantum-ready financial infrastructure</span><span class="pill">Post-quantum cryptography</span><span class="pill">Scheduling theory</span><span class="pill">Decision under uncertainty</span></div>
+</div></div>
+
+<nav class="toc" aria-label="Sections"><div class="inner">
+  <a href="#summary">Summary</a><a href="#threat">The threat</a><a href="#india">India's exposure</a><a href="#how">How Q-RIN works</a><a href="#results">Results</a><a href="#playbook">Devalue</a><a href="#landscape">Landscape</a><a href="#roadmap">Roadmap</a><a href="#method">Method and sources</a>
+</div></nav>
+
+<main>
+
+<section id="summary" aria-labelledby="h-sum">
+  <div class="eyebrow">Summary</div>
+  <h2 id="h-sum">Same teams, same deadline, half the leakage</h2>
+  <p class="sub">We modelled a mid-size Indian bank with 35 systems (data flows, encrypted archives and enabling infrastructure) migrated by parallel teams. Only the order of migration changes between strategies.</p>
+  <p class="note"><strong>Preliminary simulation.</strong> Bank parameters are synthetic, stylised from public specifications; debt is in relative value units. Numbers show the size of the ordering effect, not a forecast for a real institution.</p>
+  <div class="grid">
+    <div class="card tile c4"><span class="n">47%</span><span class="t">less harvest debt</span><span class="l">Median across 120 randomised banks vs each bank's best standard heuristic (IQR 43–51%, worst 23%).</span></div>
+    <div class="card tile c4"><span class="n">3 &lt; 6</span><span class="t">teams</span><span class="l">Q-RIN with 3 teams leaves less debt than the Mosca ranking with 6 teams (1.77M vs 1.93M units).</span></div>
+    <div class="card tile c4"><span class="n">+119%</span><span class="t">cost of a 12-month delay</span><span class="l">Starting the same optimal plan one year later more than doubles total debt.</span></div>
+    <div class="card tile c4"><span class="n">82%</span><span class="t">of debt in 5 systems</span><span class="l">Out of 32 debt-bearing systems, five carry most of the exposure. Finding them is the first win.</span></div>
+    <div class="card tile c4"><span class="n">−84%</span><span class="t">credential debt</span><span class="l">UPI-style credential exposure falls from 490k to 76k units versus the Mosca ranking (base scenario).</span></div>
+    <div class="card tile c4"><span class="n">1–5%</span><span class="t">regret</span><span class="l">The single Q-RIN plan stays within 1–5% of the best plan for each quantum-arrival scenario.</span></div>
+  </div>
+</section>
+
+<section id="threat" aria-labelledby="h-threat">
+  <div class="eyebrow">The threat</div>
+  <h2 id="h-threat">The cost of breaking today's cryptography keeps falling</h2>
+  <p class="sub">Published resource estimates for factoring RSA-2048 have dropped by four orders of magnitude in fourteen years. Breaking 256-bit elliptic curves, used in most TLS handshakes, now needs about 1,200 logical qubits.</p>
+  <div class="grid">
+    <div class="card c6">
+      <h3>Physical qubits to break RSA-2048</h3>
+      <div class="chart" id="qubits"></div>
+      <p class="small">Log scale. 2012 and 2019 figures as reported by Google; 2025 Gidney; 2026 Iceberg Quantum preprint (a claim, not yet peer reviewed).</p>
+    </div>
+    <div class="card c6">
+      <h3>When does a code-breaking quantum computer arrive?</h3>
+      <div class="chart" id="cdf"></div>
+      <div class="legend" id="cdfleg"></div>
+      <p class="small">The three arrival scenarios Q-RIN plans against. The marker shows the 2025 expert survey's 28–49% probability within ten years.</p>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card c12">
+      <h3>Why this is a loss today, not in 2035</h3>
+      <div class="chart" id="hndl"></div>
+      <p class="small">Data captured at time t stays valuable for its secrecy lifetime L. It is lost if the quantum computer arrives before t + L. Biometric identity data never expires, so every capture counts.</p>
+    </div>
+  </div>
+</section>
+
+<section id="india" aria-labelledby="h-india">
+  <div class="eyebrow">India's exposure</div>
+  <h2 id="h-india">Quantum-vulnerable key transport sits inside India's core rails</h2>
+  <p class="sub">Public specifications show RSA key transport protecting some of the most sensitive, longest-lived data in Indian finance. Regulators have started to act.</p>
+  <div class="grid">
+    <div class="card c7">
+      <h3>Where RSA protects long-lived secrets</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Channel</th><th>What is protected</th><th>Published mechanism</th><th>Secrecy life</th></tr></thead>
+        <tbody>
+          <tr><td>Aadhaar authentication (incl. AePS)</td><td>PID block with biometrics</td><td>AES-256 session key wrapped with UIDAI's 2048-bit public key</td><td><span class="chip bad">lifetime</span></td></tr>
+          <tr><td>UPI credential capture</td><td>UPI PIN, OTP</td><td>RSA-2048 encryption via NPCI Common Library</td><td><span class="chip warn">until reset</span></td></tr>
+          <tr><td>NACH file exchange</td><td>Mandates, account data</td><td>Session key wrapped with NPCI public key using RSA</td><td><span class="chip warn">years</span></td></tr>
+          <tr><td>Bank file transfers, backups</td><td>KYC, salary, payment files</td><td>PGP / envelope encryption, commonly RSA-wrapped</td><td><span class="chip bad">10+ yrs</span></td></tr>
+          <tr><td>Web and API TLS</td><td>Sessions, PII, payments</td><td>ECDHE key exchange unless hybrid PQC is enabled</td><td><span class="chip">varies</span></td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">Sources: UIDAI developer documentation; NPCI UPI technology deck; NPCI NACH circular 005 FY24-25. Rows 4–5 describe common practice, not a specific institution.</p>
+    </div>
+    <div class="card c5">
+      <h3>The policy clock</h3>
+      <div class="timeline">
+        <div class="tl"><span class="y">Apr 2026</span><span>IFSCA: GIFT IFSC market infrastructure must run annual cryptographic risk assessments and keep PQC roadmaps</span></div>
+        <div class="tl"><span class="y">May 2026</span><span>RBI sets up the Q-SAFE expert committee; DST publishes India's quantum-safe roadmap</span></div>
+        <div class="tl"><span class="y">Sep 2026</span><span>RBI Deputy Governor: time to quantum-proof payment systems; SEBI preparing markets</span></div>
+        <div class="tl"><span class="y">2027–29</span><span>DST: foundations in critical sectors by 2027, priority systems by 2028, full migration by 2029</span></div>
+        <div class="tl"><span class="y">2029</span><span>Google's own PQC migration deadline</span></div>
+        <div class="tl"><span class="y">2030</span><span>EU high-risk systems migrated; NIST deprecates RSA and ECC; HKMA targets full preparedness</span></div>
+        <div class="tl"><span class="y">2035</span><span>NIST disallows RSA and ECC; G7 sector-wide target</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" aria-labelledby="h-how">
+  <div class="eyebrow">How Q-RIN works</div>
+  <h2 id="h-how">Five stages: discover, price, plan, devalue, supervise</h2>
+  <p class="sub">Q-RIN sits on top of existing crypto-inventory tools. It adds the decision layer they lack: a price on delay and the order of fixes that minimises total loss.</p>
+  <div class="pipeline">
+    <div class="stage"><span class="num">01 · Discover</span><h3>Harvest Lens</h3>
+      <ul><li>TLS 1.3 key-share group (X25519 vs X25519MLKEM768), read in cleartext from handshakes</li><li>IKE/IPsec and SSH key-exchange proposals</li><li>PGP and CMS headers in file stores and logs</li><li>X.509, HSM and KMS key inventories</li></ul>
+      <div class="io">Decrypts nothing · Output: CycloneDX CBOM</div></div>
+    <div class="stage"><span class="num">02 · Price</span><h3>Debt engine</h3>
+      <ul><li>Maps each flow or archive to a data class and secrecy lifetime</li><li>Volume × value × harvest probability</li><li>× probability the quantum computer arrives before the secret expires</li></ul>
+      <div class="io">Output: harvest-debt ledger, debt rate per system</div></div>
+    <div class="stage"><span class="num">03 · Plan</span><h3>Scheduler</h3>
+      <ul><li>Weighted-completion-time scheduling</li><li>Dependencies: HSM, PKI, key-wrap; both ends of a channel</li><li>Parallel teams, budget</li><li>Robust across arrival scenarios (minimax regret)</li></ul>
+      <div class="io">Output: quarter-by-quarter migration plan</div></div>
+    <div class="stage"><span class="num">04 · Devalue</span><h3>Playbook</h3>
+      <ul><li>Hybrid ML-KEM tunnels on highest-debt links</li><li>Re-wrap or crypto-shred RSA-wrapped archives</li><li>Rotate secrets that crossed vulnerable channels</li></ul>
+      <div class="io">Output: quick wins that stop accrual within months</div></div>
+    <div class="stage"><span class="num">05 · Supervise</span><h3>Sector view</h3>
+      <ul><li>Aggregated debt and burn-down per institution</li><li>Two-ended channel coordination (NPCI, UIDAI, SFMS)</li><li>Concentration on shared vendors</li></ul>
+      <div class="io">Output: outcome metric for RBI, SEBI, IFSCA</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card c7">
+      <h3>The harvest-debt equation</h3>
+      <div class="formula">D_j = ∫₀^{C_j} r_j · F(t + L_j) dt          total debt = Σ_j D_j
+
+r_j   harvestable value per month
+        flow:    records/month × value/record × P(path recorded)
+        archive: stored records × value/record × P(store stolen per month)
+L_j   secrecy lifetime of the data class (years)
+F     probability the quantum computer has arrived by a given time
+C_j   month when system j's migration completes</div>
+      <p class="small">Debt accrues until migration completes. A month of delay on a high-rate system costs more than a month on a low-rate one, which is why order matters.</p>
+    </div>
+    <div class="card c5">
+      <h3>Secrecy lifetimes by data class</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Data class</th><th class="num">Lifetime</th><th class="num">Value/record</th></tr></thead>
+        <tbody id="classes"></tbody>
+      </table></div>
+      <p class="small">Model defaults, configurable per institution. Value units are relative.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card c6">
+      <h3>Why order matters: a two-system example</h3>
+      <p class="small">One team. System A accrues 100 units/month and takes 2 months. System B accrues 300 units/month and takes 12 months.</p>
+      <div class="chart" id="toy"></div>
+      <p class="small">A first: 100×2 + 300×14 = <strong>4,400</strong>. B first: 300×12 + 100×14 = <strong>5,000</strong>. Smith's rule (rate ÷ effort: A = 50, B = 25) picks A first and is provably optimal for one team without dependencies. Intuition says fix the bigger risk first; the maths says otherwise.</p>
+    </div>
+    <div class="card c6">
+      <h3>What the scheduler adds beyond Smith's rule</h3>
+      <ul>
+        <li><strong>Dependencies.</strong> An HSM or key-management upgrade unlocks several systems. It carries no debt itself but inherits the weight of what it unlocks.</li>
+        <li><strong>Two-ended channels.</strong> UPI credential encryption is safe only when NPCI and the PSP both migrate. Ecosystem mode schedules across institutions.</li>
+        <li><strong>Parallel teams.</strong> List scheduling across teams, improved by local search.</li>
+        <li><strong>Uncertain Q-day.</strong> One plan is optimised for the scenario-weighted expectation and checked for regret against each scenario's own best plan.</li>
+        <li><strong>Re-planning.</strong> When resource estimates fall, the arrival curve shifts and the plan updates.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="results" aria-labelledby="h-res">
+  <div class="eyebrow">Results</div>
+  <h2 id="h-res">What the simulation shows</h2>
+  <p class="sub">Baselines are the prioritisation methods used in practice: Mosca's X+Y ranking, a static risk score (sensitivity × exposure × lifetime), internet-facing first, and quick wins first.</p>
+
+  <div class="card">
+    <h3>Cumulative harvest debt over the migration</h3>
+    <div class="controls" role="group" aria-label="Quantum-arrival scenario">
+      <span>Quantum-arrival scenario</span>
+      <button class="seg sc" data-sc="aggressive" aria-pressed="false">Aggressive (median ~2031)</button>
+      <button class="seg sc" data-sc="base" aria-pressed="true">Base (median ~2039)</button>
+      <button class="seg sc" data-sc="conservative" aria-pressed="false">Conservative (median ~2048)</button>
+    </div>
+    <div class="grid">
+      <div class="c8"><div class="chart" id="curve"></div><div class="legend" id="legend"></div></div>
+      <div class="c4"><div class="tablewrap"><table id="tab"><thead><tr><th>Strategy</th><th class="num">Debt</th><th class="num">vs Q-RIN</th></tr></thead><tbody></tbody></table></div>
+      <p class="small" style="margin-top:8px">Base bank, 4 teams, all strategies finish in 4.0 years.</p></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card c6">
+      <h3>Debt by data class</h3>
+      <div class="chart" id="byclass"></div>
+      <div class="legend" id="classleg"></div>
+      <p class="small">Base scenario. Q-RIN removes most credential exposure by finishing the HSM upgrade early and re-wrapping payment logs.</p>
+    </div>
+    <div class="card c6">
+      <h3>A few systems carry most of the debt</h3>
+      <div class="chart" id="pareto"></div>
+      <p class="small">Share of four-year unmitigated debt per system (bars) and cumulative share (line), base scenario.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card c6">
+      <h3>The price of waiting</h3>
+      <div class="chart" id="delay"></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Q-RIN plan</span><span><i style="background:var(--warn)"></i>Mosca ranking</span></div>
+      <p class="small">Expected total debt when the same plan starts later. Q-RIN started 12 months late is close to the Mosca ranking started today.</p>
+    </div>
+    <div class="card c6">
+      <h3>Order is worth teams</h3>
+      <div class="chart" id="teams"></div>
+      <div class="legend"><span><b style="background:var(--accent)"></b>Q-RIN</span><span><b style="background:var(--warn)"></b>Mosca ranking</span><span><b style="background:var(--grey1)"></b>Static risk score</span></div>
+      <p class="small">Expected debt by number of parallel migration teams. Labels show Q-RIN's finish time.</p>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card c7">
+      <h3>Robustness across 120 randomised banks</h3>
+      <div class="controls" role="group" aria-label="Comparison baseline">
+        <span>Compared with</span>
+        <button class="seg rb" data-rb="vs_best" aria-pressed="true">Best heuristic per bank</button>
+        <button class="seg rb" data-rb="vs_mosca" aria-pressed="false">Mosca ranking</button>
+        <button class="seg rb" data-rb="vs_risk" aria-pressed="false">Static risk score</button>
+      </div>
+      <div class="chart" id="hist"></div>
+      <p class="small" id="robtxt"></p>
+    </div>
+    <div class="card c5">
+      <h3>Stored ciphertext matters</h3>
+      <div class="chart" id="arch"></div>
+      <p class="small">Leaving encrypted archives (PGP files, logs, backups) until the end of the Q-RIN plan adds 11% to expected debt. Most roadmaps only treat data in transit.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Migration schedules compared</h3>
+    <p class="small">Each bar is one system's migration window. Q-RIN front-loads high-volume internal links and the HSM and key-wrap upgrades that unlock credential and archive fixes.</p>
+    <div class="controls" role="group" aria-label="Schedule">
+      <span>Schedule</span>
+      <button class="seg gs" data-st="Q-RIN debt-optimal" aria-pressed="true">Q-RIN</button>
+      <button class="seg gs" data-st="Mosca X+Y ranking" aria-pressed="false">Mosca X+Y ranking</button>
+      <button class="seg gs" data-st="Static risk score" aria-pressed="false">Static risk score</button>
+    </div>
+    <div class="legend" id="ganttleg"></div>
+    <div class="chart" id="gantt"></div>
+  </div>
+
+  <div class="card">
+    <h3>The harvest-debt ledger: first 15 systems in the Q-RIN plan</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>System</th><th>Class</th><th class="num">Secrecy life</th><th class="num">Debt rate /mo</th><th class="num">Effort (team-mo)</th><th class="num">Rate ÷ effort</th><th class="num">Done by</th></tr></thead>
+      <tbody id="ledger"></tbody>
+    </table></div>
+    <p class="small">Debt rate at the start, scenario-weighted. Enabling upgrades show a rate of zero but are scheduled early because they unlock high-rate systems.</p>
+  </div>
+</section>
+
+<section id="playbook" aria-labelledby="h-play">
+  <div class="eyebrow">Devalue</div>
+  <h2 id="h-play">Make what is stolen worth less</h2>
+  <p class="sub">Data already recorded cannot be un-recorded. Q-RIN's playbook stops new accrual fast and shrinks what a future breach could yield.</p>
+  <div class="steps">
+    <div class="card"><span class="chip good">weeks</span><h3>Hybrid tunnels</h3><p class="small">Put X25519MLKEM768 or IPsec with ML-KEM on the highest-debt links first. Legacy applications stay untouched behind the tunnel.</p></div>
+    <div class="card"><span class="chip good">weeks</span><h3>Re-wrap archives</h3><p class="small">Re-encrypt PGP files, logs and backups under ML-KEM or symmetric-only keys, crypto-shred RSA-wrapped copies, and delete what retention rules no longer require.</p></div>
+    <div class="card"><span class="chip warn">months</span><h3>Rotate secrets</h3><p class="small">Rotate API keys, long-lived credentials and keys that crossed vulnerable channels, so harvested copies expire before a quantum computer exists.</p></div>
+    <div class="card"><span class="chip bad">ecosystem</span><h3>Redesign permanent secrets</h3><p class="small">Biometrics cannot be rotated. Flag them for protocol-level PQC key transport with the identity and payment operators.</p></div>
+  </div>
+</section>
+
+<section id="landscape" aria-labelledby="h-land">
+  <div class="eyebrow">Landscape</div>
+  <h2 id="h-land">What exists, and the gap Q-RIN fills</h2>
+  <div class="card">
+    <h3>Capability comparison</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Approach</th><th>Find vulnerable crypto</th><th>Risk score</th><th>Price delay (accruing harm)</th><th>Optimal order with dependencies</th><th>Stored ciphertext</th><th>Two-ended channels</th><th>Robust to Q-day uncertainty</th></tr></thead>
+      <tbody>
+        <tr><td>IBM Quantum Safe / Guardium</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="part">Partial</td><td class="part">Partial</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>SandboxAQ AQtive Guard</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="part">Partial</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>Mosca inequality / QRA</td><td class="no">No</td><td class="part">Binary</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="part">Point estimate</td></tr>
+        <tr><td>Europol / FS-ISAC prioritisation</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="part">Partial</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>QARS score (2025)</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>HKMA Quantum Preparedness Index</td><td class="no">No</td><td class="part">Maturity survey</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr class="hi"><td>Q-RIN</td><td>Consumes CBOMs + Harvest Lens</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small">Vendor columns reflect public product descriptions. A 2026 Frontiers review notes the field lacks a PQC timing model that treats interception harm as an accruing cost.</p>
+  </div>
+  <div class="card">
+    <h3>How other jurisdictions are approaching it</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Jurisdiction</th><th>Approach</th><th>Key dates</th></tr></thead>
+      <tbody>
+        <tr><td>United States</td><td>NIST IR 8547 transition plan; federal mandates</td><td>Deprecate RSA/ECC after 2030, disallow after 2035</td></tr>
+        <tr><td>European Union</td><td>Coordinated implementation roadmap, risk-tiered</td><td>Pilots by 2026, high-risk by 2030, rest by 2035</td></tr>
+        <tr><td>G7 Cyber Expert Group</td><td>Non-binding financial-sector roadmap</td><td>Critical systems 2030–32, sector by 2035</td></tr>
+        <tr><td>BIS / Eurosystem</td><td>Project Leap: PQC signatures in TARGET2 liquidity transfers</td><td>Phase 2 reported Dec 2025</td></tr>
+        <tr><td>Hong Kong</td><td>Quantum Preparedness Index: sector scored 2.3/10</td><td>Full readiness target 2030</td></tr>
+        <tr><td>Singapore</td><td>MAS QKD sandbox with DBS, HSBC, OCBC, UOB</td><td>Report Sep 2025</td></tr>
+        <tr><td>China</td><td>QKD backbone in banking; own PQC algorithm competition (NGCC)</td><td>First-round candidates Sep 2026</td></tr>
+        <tr><td>Russia</td><td>Pilots: QKD plus PQC blockchain tested at Gazprombank</td><td>Research stage</td></tr>
+        <tr><td>India</td><td>DST roadmap, RBI Q-SAFE, SEBI action plan, IFSCA MII guidelines</td><td>Critical sectors 2027–2029</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section id="roadmap" aria-labelledby="h-road">
+  <div class="eyebrow">Roadmap</div>
+  <h2 id="h-road">From simulation to pilot</h2>
+  <div class="grid">
+    <div class="card c3"><span class="chip">Dec 2026</span><h3>Build</h3><p class="small">Harvest Lens sensors (TLS, IPsec, SSH, PGP/CMS, X.509) and open-source debt engine and scheduler.</p></div>
+    <div class="card c3"><span class="chip">Jan 2027</span><h3>Calibrate</h3><p class="small">Bank digital twin from public specifications; calibrate lifetimes and harvest probabilities with security teams.</p></div>
+    <div class="card c3"><span class="chip">Feb–Apr 2027</span><h3>Pilot</h3><p class="small">Read-only, metadata-only pilot with one IFSC bank or MII through the IFSCA sandbox.</p></div>
+    <div class="card c3"><span class="chip">2027+</span><h3>Scale</h3><p class="small">Ecosystem study with a payment operator, supervisory dashboard, peer-reviewed publication, signature-forgery module.</p></div>
+  </div>
+</section>
+
+<section id="method" aria-labelledby="h-meth">
+  <div class="eyebrow">Method and sources</div>
+  <h2 id="h-meth">Assumptions, limits and references</h2>
+  <div class="grid">
+    <div class="card c6">
+      <h3>Simulation setup</h3>
+      <ul>
+        <li>35 systems: 27 data flows, 5 encrypted archives, 3 enabling upgrades (HSM, PKI, KMS key-wrap).</li>
+        <li>4 parallel teams; list scheduling with precedence; 60-month horizon on a monthly grid.</li>
+        <li>Arrival scenarios: lognormal with medians of 4.5, 13 and 22 years, weighted 25/50/25.</li>
+        <li>Q-RIN plan: Smith-ratio seed, then 6,000 swap and insertion moves on expected debt.</li>
+        <li>Robustness: volumes ×÷3, values ×÷2, harvest probability and effort ±50%, redrawn for 120 banks.</li>
+      </ul>
+    </div>
+    <div class="card c6">
+      <h3>Limits</h3>
+      <ul>
+        <li>Parameters are synthetic. Real calibration needs metadata-only inventories from institutions.</li>
+        <li>Value is in relative units. Only the order matters, and randomising values does not remove the effect.</li>
+        <li>Harvest probabilities are path-class estimates; the pilot will refine them.</li>
+        <li>Signature forgery after Q-day ("trust now, forge later") is a separate metric, planned as a second module.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h3>References</h3>
+    <ol class="refs">
+      <li>Gidney, C. (2025). How to factor 2048 bit RSA integers with less than a million noisy qubits. arXiv:2505.15917.</li>
+      <li>Gidney, C. and Ekerå, M. (2019/2021). How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits.</li>
+      <li>Webster, P. et al. (2026). The Pinnacle Architecture: reducing the cost of breaking RSA-2048 to 100,000 physical qubits. arXiv:2602.11457 (preprint).</li>
+      <li>Babbush, R. et al. (2026). Securing elliptic curve cryptocurrencies against quantum vulnerabilities. PRX Quantum 7, 031001.</li>
+      <li>Mosca, M. and Piani, M. (2025). Quantum Threat Timeline Report 2025. Global Risk Institute / evolutionQ.</li>
+      <li>Mosca, M. (2018). Cybersecurity in an era with quantum computers: will we be ready? IEEE Security &amp; Privacy.</li>
+      <li>Auer, R. et al. (2025). Quantum-readiness for the financial system: a roadmap. BIS Papers No 158.</li>
+      <li>BIS Innovation Hub (2025). Project Leap phase 2: quantum-proofing payment systems.</li>
+      <li>G7 Cyber Expert Group (2026). Advancing a coordinated roadmap for the transition to PQC in the financial sector.</li>
+      <li>Europol QSFF, FS-ISAC, CFDIR (2026). Prioritizing PQC migration activities in financial services.</li>
+      <li>NIST (2026). IR 8547: Transition to post-quantum cryptography standards (final).</li>
+      <li>EU NIS Cooperation Group (2025). A coordinated implementation roadmap for the transition to PQC.</li>
+      <li>DST, Government of India (2026). Report on Quantum-Safe Ecosystem in India: roadmap to quantum resiliency.</li>
+      <li>RBI (2026). Quantum Secure and Adaptive Financial Ecosystem (Q-SAFE): setting up of an expert committee.</li>
+      <li>IFSCA (2026). Guidelines on cyber security and cyber resilience for MIIs in IFSC.</li>
+      <li>HKMA (2026). Whitepaper on quantum preparedness of Hong Kong's banking sector.</li>
+      <li>Frontiers in Quantum Science and Technology (2026). Perspective on PQC migration timing models. doi:10.3389/frqst.2026.1918786.</li>
+      <li>Quantum-Adjusted Risk Score (QARS): Towards a unified quantum risk assessment. Electronics 14(17):3338 (2025).</li>
+      <li>On the formalization of cryptographic migration. arXiv:2408.05997.</li>
+      <li>Smith, W. E. (1956). Various optimizers for single-stage production. Naval Research Logistics Quarterly.</li>
+      <li>UIDAI developer documentation; NPCI UPI technology deck; NPCI NACH circular 005 FY24-25.</li>
+    </ol>
+  </div>
+</section>
+</main>
+<footer>Team Jalebi · Jash Pasad, Beli Dedhia · IIT Gandhinagar. Simulation code: harvest_debt_sim.py and robustness.py (available on request).</footer>
+
+<script>
+const D = __DATA__;
+const E = __MORE__;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const NS="http://www.w3.org/2000/svg";
+function el(tag, a, p){ const e=document.createElementNS(NS,tag); for(const k in a) e.setAttribute(k,a[k]); if(p) p.appendChild(e); return e; }
+function txt(p,x,y,s,a){ const t=el('text',Object.assign({x,y},a||{}),p); t.textContent=s; return t; }
+const trim = s => s.includes('.') ? s.replace(/0+$/,'').replace(/\.$/,'') : s;
+const fmt = v => Math.abs(v)>=1e6 ? trim((v/1e6).toFixed(2))+'M' : Math.abs(v)>=1e3 ? (v/1e3).toFixed(0)+'k' : Math.abs(v)>=10 ? String(Math.round(v)) : trim(v.toFixed(2));
+function niceMax(v){ if(v<=0) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const m=v/p; return (m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p; }
+function W(box,min){ return Math.max(min||420, Math.min(box.clientWidth||700, 1040)); }
+function svgIn(id,w,h,label){ const box=document.getElementById(id); box.innerHTML=''; return el('svg',{viewBox:`0 0 ${w} ${h}`,width:'100%',role:'img','aria-label':label},box); }
+function yGrid(svg,m,w,h,max,Y,f){ for(let i=0;i<=4;i++){ const v=max*i/4; el('line',{x1:m.l,x2:w-m.r,y1:Y(v),y2:Y(v),stroke:css('--line')},svg); txt(svg,m.l-8,Y(v)+4,(f||fmt)(v),{'text-anchor':'end'}); } }
+
+const STRATS=["Q-RIN debt-optimal","Mosca X+Y ranking","Static risk score","Exposure-first","Quick wins first"];
+const SCOL=()=>({"Q-RIN debt-optimal":css('--accent'),"Mosca X+Y ranking":css('--warn'),"Static risk score":css('--grey1'),"Exposure-first":css('--grey2'),"Quick wins first":css('--muted')});
+const CLS={BIO:'#7a4fb5',CRED:'#c2410c',KYC:'#0b6e8a',CARD:'#b8860b',PAY:'#4b7f52',TRADE:'#6b7a8a',TREAS:'#a3324d',INT:'#8a96a3'};
+const CLSN={BIO:'Biometric',CRED:'Credentials',KYC:'KYC / PII',CARD:'Card data',PAY:'Payments',TRADE:'Trading',TREAS:'Treasury / M&A',INT:'Internal / enabling'};
+const CLSDEF={BIO:[60,50],CRED:[3,20],KYC:[15,10],CARD:[3,8],PAY:[7,1],TRADE:[0.08,3],TREAS:[3,500],INT:[3,0.5]};
+let sc="base", st="Q-RIN debt-optimal", rb="vs_best";
+
+function drawQubits(){
+  const pts=[[2012,1e9,'~1 billion'],[2019,2e7,'20 million'],[2025,1e6,'<1 million'],[2026,1e5,'<100,000']];
+  const w=W(document.getElementById('qubits')),h=260,m={l:64,r:24,t:16,b:32}; const svg=svgIn('qubits',w,h,'RSA-2048 qubit estimates, log scale');
+  const X=y=>m.l+(y-2011)/(2027-2011)*(w-m.l-m.r), Y=v=>h-m.b-(Math.log10(v)-4)/(10-4)*(h-m.t-m.b);
+  for(let e=4;e<=10;e+=2){ el('line',{x1:m.l,x2:w-m.r,y1:Y(10**e),y2:Y(10**e),stroke:css('--line')},svg); txt(svg,m.l-8,Y(10**e)+4,['10k','1M','100M','10B'][(e-4)/2],{'text-anchor':'end'}); }
+  [2012,2016,2020,2024].forEach(y=>txt(svg,X(y),h-10,y,{'text-anchor':'middle'}));
+  el('path',{d:pts.map((p,i)=>`${i?'L':'M'}${X(p[0])},${Y(p[1])}`).join(''),fill:'none',stroke:css('--accent'),'stroke-width':2.5},svg);
+  pts.forEach((p,i)=>{ el('circle',{cx:X(p[0]),cy:Y(p[1]),r:5,fill:i==3?css('--surface'):css('--accent'),stroke:css('--accent'),'stroke-width':2},svg); txt(svg,X(p[0])+(i==3?-8:8),Y(p[1])-9,p[2],{'text-anchor':i==3?'end':'start',class:'lab'}); });
+}
+
+function drawCDF(){
+  const box=document.getElementById('cdf'), w=W(box),h=260,m={l:44,r:16,t:14,b:32}; const svg=svgIn('cdf',w,h,'Quantum arrival probability by year');
+  const ys=E.cdf.years, X=y=>m.l+(y/30)*(w-m.l-m.r), Y=v=>h-m.b-v*(h-m.t-m.b);
+  yGrid(svg,m,w,h,1,Y,v=>Math.round(v*100)+'%');
+  [0,5,10,15,20,25,30].forEach(y=>txt(svg,X(y),h-10,2026+y,{'text-anchor':'middle'}));
+  const cols={aggressive:css('--bad'),base:css('--accent'),conservative:css('--grey1')};
+  ['aggressive','base','conservative'].forEach(s=>el('path',{d:ys.map((y,i)=>`${i?'L':'M'}${X(y).toFixed(1)},${Y(E.cdf[s][i]).toFixed(1)}`).join(''),fill:'none',stroke:cols[s],'stroke-width':s=='base'?3:2},svg));
+  el('line',{x1:X(10),x2:X(10),y1:Y(.28),y2:Y(.49),stroke:css('--ink'),'stroke-width':5,'stroke-linecap':'round',opacity:.75},svg);
+  txt(svg,X(10)+8,Y(.49)-4,'Experts 2025: 28–49% by 2036',{class:'lab'});
+  document.getElementById('cdfleg').innerHTML=`<span><i style="background:${cols.aggressive}"></i>Aggressive (median ~2031)</span><span><i style="background:${cols.base}"></i>Base (median ~2039)</span><span><i style="background:${cols.conservative}"></i>Conservative (median ~2048)</span>`;
+}
+
+function drawHNDL(){
+  const box=document.getElementById('hndl'), w=W(box,560), h=190, m={l:150,r:20,t:24,b:28}; const svg=svgIn('hndl',w,h,'Harvest-now-decrypt-later timeline');
+  const X=y=>m.l+((y-2026)/24)*(w-m.l-m.r);
+  [2026,2030,2034,2038,2042,2046,2050].forEach(y=>{ el('line',{x1:X(y),x2:X(y),y1:m.t-6,y2:h-m.b,stroke:css('--line')},svg); txt(svg,X(y),h-8,y,{'text-anchor':'middle'}); });
+  const qd=2036; el('rect',{x:X(qd),y:m.t-6,width:X(2050)-X(qd),height:h-m.b-m.t+6,fill:css('--bad'),opacity:.08},svg);
+  el('line',{x1:X(qd),x2:X(qd),y1:m.t-10,y2:h-m.b,stroke:css('--bad'),'stroke-width':2,'stroke-dasharray':'5 4'},svg);
+  txt(svg,X(qd)+6,m.t-10+10,'Quantum computer arrives (example: 2036)',{class:'lab'});
+  const rows=[['Trade order (weeks)',2027,0.1,css('--good')],['Card data (3 yrs)',2027,3,css('--good')],['UPI PIN (until reset)',2033,4,css('--bad')],['KYC record (15 yrs)',2027,15,css('--bad')],['Biometrics (lifetime)',2027,23,css('--bad')]];
+  rows.forEach((r,i)=>{ const y=m.t+14+i*26; txt(svg,m.l-10,y+4,r[0],{'text-anchor':'end',class:'lab'});
+    el('circle',{cx:X(r[1]),cy:y,r:4,fill:css('--ink')},svg);
+    el('rect',{x:X(r[1]),y:y-5,width:Math.max(3,X(Math.min(r[1]+r[2],2050))-X(r[1])),height:10,rx:3,fill:r[3],opacity:.8},svg);
+    if(r[1]+r[2]>qd) txt(svg,Math.min(X(r[1]+r[2]),X(2050))-4,y+4,'lost',{'text-anchor':'end',fill:'#fff',style:'fill:#fff;font-weight:600'}); });
+  txt(svg,m.l,h-m.b+18-26*0,'',{});
+}
+
+function drawClasses(){
+  document.getElementById('classes').innerHTML=Object.keys(CLSDEF).map(k=>`<tr><td><span class="chip" style="background:${CLS[k]}33">${CLSN[k]}</span></td><td class="num">${CLSDEF[k][0]>=1?CLSDEF[k][0]+' yrs':'~1 month'}</td><td class="num">${CLSDEF[k][1]}</td></tr>`).join('');
+}
+
+function drawToy(){
+  const box=document.getElementById('toy'), w=W(box,420), h=170, m={l:70,r:16,t:16,b:30}; const svg=svgIn('toy',w,h,'Two-system scheduling example');
+  const X=t=>m.l+(t/14)*(w-m.l-m.r);
+  [0,2,4,6,8,10,12,14].forEach(t=>{ el('line',{x1:X(t),x2:X(t),y1:m.t,y2:h-m.b,stroke:css('--line')},svg); txt(svg,X(t),h-10,t+' mo',{'text-anchor':'middle'}); });
+  const rows=[['A first',[['A',0,2,css('--accent')],['B',2,14,css('--warn')]],'4,400'],['B first',[['B',0,12,css('--warn')],['A',12,14,css('--accent')]],'5,000']];
+  rows.forEach((r,i)=>{ const y=m.t+18+i*52; txt(svg,m.l-10,y+16,r[0],{'text-anchor':'end',class:'lab'});
+    r[1].forEach(b=>{ el('rect',{x:X(b[1]),y:y,width:X(b[2])-X(b[1])-2,height:26,rx:3,fill:b[3]},svg); txt(svg,(X(b[1])+X(b[2]))/2,y+17,b[0],{'text-anchor':'middle',style:'fill:#fff;font-weight:600'}); });
+    txt(svg,w-m.r,y-4,'debt '+r[2],{'text-anchor':'end',class:'lab'}); });
+}
+
+function drawCurve(){
+  const box=document.getElementById('curve'), w=W(box,480), h=300, m={l:54,r:14,t:12,b:32}; const svg=svgIn('curve',w,h,'Cumulative harvest debt');
+  const xs=D.months, max=niceMax(Math.max(...STRATS.map(s=>Math.max(...D.strategies[s][sc].curve))));
+  const X=t=>m.l+(t/60)*(w-m.l-m.r), Y=v=>h-m.b-(v/max)*(h-m.t-m.b);
+  yGrid(svg,m,w,h,max,Y); for(let t=0;t<=60;t+=12) txt(svg,X(t),h-10,t?`${t/12} yr`:'0',{'text-anchor':'middle'});
+  const C=SCOL();
+  [...STRATS].reverse().forEach(s=>{ const c=D.strategies[s][sc].curve, d=c.map((v,i)=>`${i?'L':'M'}${X(xs[i]).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    if(s===STRATS[0]) el('path',{d:d+`L${X(60)},${Y(0)}L${X(0)},${Y(0)}Z`,fill:css('--accent-soft'),opacity:.7},svg);
+    el('path',{d,fill:'none',stroke:C[s],'stroke-width':s===STRATS[0]?3:1.8},svg); el('circle',{cx:X(60),cy:Y(c[c.length-1]),r:s===STRATS[0]?4.5:3,fill:C[s]},svg); });
+  document.getElementById('legend').innerHTML=STRATS.map(s=>`<span><i style="background:${C[s]}"></i>${s}</span>`).join('');
+  const q=D.strategies[STRATS[0]][sc].total;
+  document.querySelector('#tab tbody').innerHTML=STRATS.map(s=>{ const v=D.strategies[s][sc].total; return `<tr class="${s===STRATS[0]?'hi':''}"><td>${s.replace(' debt-optimal','')}</td><td class="num">${fmt(v)}</td><td class="num">${s===STRATS[0]?'—':'+'+Math.round((v/q-1)*100)+'%'}</td></tr>`; }).join('');
+}
+
+function drawByClass(){
+  const box=document.getElementById('byclass'), w=W(box,420), h=200, m={l:110,r:60,t:10,b:28}; const svg=svgIn('byclass',w,h,'Debt by data class');
+  const rows=[['Q-RIN',E.by_class.qrin],['Mosca ranking',E.by_class.mosca],['Static risk score',E.by_class.risk]];
+  const keys=['BIO','KYC','CRED','PAY','CARD','TREAS','INT','TRADE'];
+  const max=niceMax(Math.max(...rows.map(r=>keys.reduce((a,k)=>a+(r[1][k]||0),0))));
+  const X=v=>m.l+(v/max)*(w-m.l-m.r);
+  for(let i=0;i<=4;i++){ const v=max*i/4; el('line',{x1:X(v),x2:X(v),y1:m.t,y2:h-m.b,stroke:css('--line')},svg); txt(svg,X(v),h-10,fmt(v),{'text-anchor':'middle'}); }
+  rows.forEach((r,i)=>{ const y=m.t+8+i*52; let x=0; txt(svg,m.l-10,y+20,r[0],{'text-anchor':'end',class:'lab'});
+    keys.forEach(k=>{ const v=r[1][k]||0; if(v<=0) return; el('rect',{x:X(x),y,width:Math.max(0,X(x+v)-X(x)),height:32,fill:CLS[k]},svg); x+=v; });
+    txt(svg,X(x)+6,y+20,fmt(x),{class:'lab'}); });
+  document.getElementById('classleg').innerHTML=['BIO','KYC','CRED','PAY','CARD'].map(k=>`<span><b style="background:${CLS[k]}"></b>${CLSN[k]}</span>`).join('')+'<span>others negligible</span>';
+}
+
+function drawPareto(){
+  const P=E.pareto.slice(0,10), box=document.getElementById('pareto'), w=W(box,420), h=280, m={l:200,r:44,t:8,b:28}; const svg=svgIn('pareto',w,h,'Debt concentration by system');
+  const X=v=>m.l+v*(w-m.l-m.r), rh=(h-m.t-m.b)/P.length; let cum=0; const pts=[];
+  [0,.25,.5,.75,1].forEach(v=>{ el('line',{x1:X(v),x2:X(v),y1:m.t,y2:h-m.b,stroke:css('--line')},svg); txt(svg,X(v),h-10,Math.round(v*100)+'%',{'text-anchor':'middle'}); });
+  P.forEach((p,i)=>{ const y=m.t+i*rh; cum+=p.share; txt(svg,m.l-8,y+rh/2+4,p.name.length>30?p.name.slice(0,29)+'…':p.name,{'text-anchor':'end',class:'lab'});
+    el('rect',{x:X(0),y:y+3,width:X(p.share)-X(0),height:rh-6,rx:2,fill:css('--accent'),opacity:.85},svg); pts.push([X(cum),y+rh/2]); });
+  el('path',{d:pts.map((p,i)=>`${i?'L':'M'}${p[0]},${p[1]}`).join(''),fill:'none',stroke:css('--warn'),'stroke-width':2},svg);
+  pts.forEach((p,i)=>{ el('circle',{cx:p[0],cy:p[1],r:3,fill:css('--warn')},svg); if(i==4||i==9) txt(svg,p[0]+6,p[1]+4,Math.round(P.slice(0,i+1).reduce((a,b)=>a+b.share,0)*100)+'%',{class:'lab'}); });
+}
+
+function drawDelay(){
+  const d=E.delay, box=document.getElementById('delay'), w=W(box,420), h=240, m={l:54,r:16,t:12,b:32}; const svg=svgIn('delay',w,h,'Debt vs start delay');
+  const max=niceMax(Math.max(...d.mosca)), X=t=>m.l+(t/36)*(w-m.l-m.r), Y=v=>h-m.b-(v/max)*(h-m.t-m.b);
+  yGrid(svg,m,w,h,max,Y); d.months.forEach(t=>txt(svg,X(t),h-10,t?`+${t} mo`:'now',{'text-anchor':'middle'}));
+  [['mosca',css('--warn')],['qrin',css('--accent')]].forEach(([k,c])=>{ el('path',{d:d.months.map((t,i)=>`${i?'L':'M'}${X(t)},${Y(d[k][i])}`).join(''),fill:'none',stroke:c,'stroke-width':k=='qrin'?3:2},svg); d.months.forEach((t,i)=>el('circle',{cx:X(t),cy:Y(d[k][i]),r:3.5,fill:c},svg)); });
+  const i12=d.months.indexOf(12); txt(svg,X(12)+6,Y(d.qrin[i12])+16,'+'+Math.round((d.qrin[i12]/d.qrin[0]-1)*100)+'% after a 1-year delay',{class:'lab'});
+}
+
+function drawTeams(){
+  const t=E.teams, box=document.getElementById('teams'), w=W(box,420), h=240, m={l:54,r:12,t:12,b:32}; const svg=svgIn('teams',w,h,'Debt by number of teams');
+  const max=niceMax(Math.max(...t.mosca,...t.risk)), gw=(w-m.l-m.r)/t.teams.length, bw=Math.min(22,gw/4), Y=v=>h-m.b-(v/max)*(h-m.t-m.b);
+  yGrid(svg,m,w,h,max,Y);
+  t.teams.forEach((n,i)=>{ const x0=m.l+i*gw+gw/2-1.5*bw; [['qrin',css('--accent')],['mosca',css('--warn')],['risk',css('--grey1')]].forEach(([k,c],j)=>el('rect',{x:x0+j*bw,y:Y(t[k][i]),width:bw-2,height:h-m.b-Y(t[k][i]),rx:2,fill:c},svg));
+    txt(svg,m.l+i*gw+gw/2,h-10,n+' teams',{'text-anchor':'middle'}); txt(svg,x0+bw/2,Y(t.qrin[i])-5,t.makespan[i].toFixed(1)+'y',{'text-anchor':'middle',class:'lab',style:'font-size:11px'}); });
+}
+
+function drawHist(){
+  const vals=E.rob[rb], box=document.getElementById('hist'), w=W(box,420), h=210, m={l:36,r:8,t:10,b:32}; const svg=svgIn('hist',w,h,'Distribution of debt reduction');
+  const bins=[]; for(let b=20;b<70;b+=5) bins.push({lo:b,n:0}); vals.forEach(v=>{ const b=bins.find(b=>v>=b.lo&&v<b.lo+5)||bins[v<20?0:bins.length-1]; b.n++; });
+  const max=niceMax(Math.max(...bins.map(b=>b.n))), bw=(w-m.l-m.r)/bins.length, Y=v=>h-m.b-(v/max)*(h-m.t-m.b);
+  yGrid(svg,m,w,h,max,Y,v=>Math.round(v));
+  bins.forEach((b,i)=>{ el('rect',{x:m.l+i*bw+2,y:Y(b.n),width:bw-4,height:h-m.b-Y(b.n),rx:2,fill:css('--accent')},svg); txt(svg,m.l+i*bw+bw/2,h-12,b.lo+'%',{'text-anchor':'middle'}); });
+  const s=[...vals].sort((a,b)=>a-b), q=p=>s[Math.floor(p*(s.length-1))];
+  document.getElementById('robtxt').textContent=`Q-RIN's saving across 120 banks: median ${q(.5).toFixed(1)}%, middle half ${q(.25).toFixed(1)}–${q(.75).toFixed(1)}%, worst ${s[0].toFixed(1)}%. Every bank saved at least ${Math.floor(s[0])}%.`;
+}
+
+function drawArch(){
+  const a=E.archives, box=document.getElementById('arch'), w=W(box,320), h=200, m={l:54,r:16,t:16,b:44}; const svg=svgIn('arch',w,h,'Archives early vs late');
+  const max=niceMax(a.qrin_archives_last), Y=v=>h-m.b-(v/max)*(h-m.t-m.b), bw=(w-m.l-m.r)/2;
+  yGrid(svg,m,w,h,max,Y);
+  [['Archives early (Q-RIN)',a.qrin,css('--accent')],['Archives last',a.qrin_archives_last,css('--warn')]].forEach((r,i)=>{ const x=m.l+i*bw+bw*.2;
+    el('rect',{x,y:Y(r[1]),width:bw*.6,height:h-m.b-Y(r[1]),rx:3,fill:r[2]},svg); txt(svg,x+bw*.3,Y(r[1])-6,fmt(r[1]),{'text-anchor':'middle',class:'lab'}); txt(svg,x+bw*.3,h-m.b+18,r[0],{'text-anchor':'middle'}); });
+}
+
+function drawGantt(){
+  document.getElementById('ganttleg').innerHTML=Object.keys(CLS).map(k=>`<span><b style="background:${CLS[k]}"></b>${CLSN[k]}</span>`).join('');
+  const rows=D.strategies[st].order, box=document.getElementById('gantt'), w=W(box,680), rh=17, m={l:290,r:16,t:6,b:30}, h=m.t+m.b+rows.length*rh;
+  const svg=svgIn('gantt',w,h,'Migration schedule'); const X=t=>m.l+(t/50)*(w-m.l-m.r);
+  for(let t=0;t<=48;t+=12){ el('line',{x1:X(t),x2:X(t),y1:m.t,y2:h-m.b,stroke:css('--line')},svg); txt(svg,X(t),h-10,t?`${t/12} yr`:'start',{'text-anchor':'middle'}); }
+  rows.forEach((o,i)=>{ const y=m.t+i*rh; txt(svg,m.l-8,y+12,o.name+(o.kind==='archive'?' (archive)':''),{'text-anchor':'end'});
+    el('rect',{x:X(o.start),y:y+3,width:Math.max(2,X(o.finish)-X(o.start)),height:rh-6,rx:2,fill:CLS[o.cls],opacity:o.kind==='prereq'?.55:1},svg); });
+}
+
+function drawLedger(){
+  document.getElementById('ledger').innerHTML=E.ledger.slice(0,15).map(r=>`<tr><td>${r.name}${r.kind==='archive'?' <span class="chip warn">archive</span>':r.kind==='prereq'?' <span class="chip">enabler</span>':''}</td><td>${CLSN[r.cls]}</td><td class="num">${r.kind==='prereq'?'—':(r.L>=1?r.L+' yrs':'~1 mo')}</td><td class="num">${fmt(r.rate)}</td><td class="num">${r.effort}</td><td class="num">${r.kind==='prereq'?'unlocks':fmt(r.ratio)}</td><td class="num">month ${Math.round(r.finish)}</td></tr>`).join('');
+}
+
+function all(){ drawQubits(); drawCDF(); drawHNDL(); drawClasses(); drawToy(); drawCurve(); drawByClass(); drawPareto(); drawDelay(); drawTeams(); drawHist(); drawArch(); drawGantt(); drawLedger(); }
+document.querySelectorAll('button.sc').forEach(b=>b.addEventListener('click',()=>{ sc=b.dataset.sc; document.querySelectorAll('button.sc').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawCurve(); }));
+document.querySelectorAll('button.gs').forEach(b=>b.addEventListener('click',()=>{ st=b.dataset.st; document.querySelectorAll('button.gs').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawGantt(); }));
+document.querySelectorAll('button.rb').forEach(b=>b.addEventListener('click',()=>{ rb=b.dataset.rb; document.querySelectorAll('button.rb').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawHist(); }));
+all();
+let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(all,150); });
+new MutationObserver(all).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+</script>
+</body>
+</html>
